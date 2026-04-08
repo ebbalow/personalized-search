@@ -21,7 +21,9 @@ if __name__ == "__main__":
 from elasticsearch import Elasticsearch
 from user_profile import register_or_load, log_click, get_profile_boost
 
+
 client = Elasticsearch("http://localhost:9200")
+
 
 def search(query, profile, n=10):
     boost_terms = get_profile_boost(profile)
@@ -73,7 +75,11 @@ def search(query, profile, n=10):
 
 def run(profile):
     print(f"\nLogged in as: {profile['username']}")
-    print(f"Known interests: {profile['top_terms'] or 'none yet'}\n")
+    
+    bio = profile.get('seed_terms', [])
+    clicks = profile.get('click_terms', [])
+    print(f"Bio Interests:   {bio if bio else 'none'}")
+    print(f"Click Interests: {clicks if clicks else 'none'}\n")
 
     while True:
         query = input("Search (or 'quit'): ").strip()
