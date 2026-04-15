@@ -35,17 +35,21 @@ def search(query, profile, n=10):
                 "script_score": {
                     "query": {
                         "bool": {
-                            "must": {
-                                "match": {"body": query}
-                            },
-                            "should": {
-                                "match": {
-                                    "body": {
-                                        "query": boost_terms,
-                                        "boost": 1.5  # profile influence
+                            "must": [
+                                {
+                                    "match": {"body": query}
+                                }
+                            ],
+                            "should": [
+                                {
+                                    "match": {
+                                        "body": {
+                                            "query": boost_terms,
+                                            "boost": 1.5
+                                        }
                                     }
                                 }
-                            }
+                            ]
                         }
                     },
                     "script": {
@@ -76,10 +80,13 @@ def search(query, profile, n=10):
 def run(profile):
     print(f"\nLogged in as: {profile['username']}")
     
-    bio = profile.get('seed_terms', [])
-    clicks = profile.get('click_terms', [])
-    print(f"Bio Interests:   {bio if bio else 'none'}")
-    print(f"Click Interests: {clicks if clicks else 'none'}\n")
+    seed = profile.get("seed_terms", [])
+    long_term = profile.get("long_term_terms", [])
+    session = profile.get("session_terms", [])
+
+    print(f"Seed Interests:      {seed if seed else 'none'}")
+    print(f"Long-term Interests: {long_term if long_term else 'none'}")
+    print(f"Session Interests:   {session if session else 'none'}\n")
 
     while True:
         query = input("Search (or 'quit'): ").strip()
@@ -113,6 +120,10 @@ def run(profile):
                     clicked["_source"]["body"]
                 )
                 print(f"Logged click: {clicked['_source']['title']}\n")
+                print("Updated profile:")
+                print(f"Seed Interests:      {profile.get('seed_terms', []) or 'none'}")
+                print(f"Long-term Interests: {profile.get('long_term_terms', []) or 'none'}")
+                print(f"Session Interests:   {profile.get('session_terms', []) or 'none'}\n")
 
 if __name__ == "__main__":
     username = input("Enter username: ").strip()

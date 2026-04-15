@@ -8,6 +8,7 @@ from elasticsearch import Elasticsearch
 # Initialize Elasticsearch Client
 client = Elasticsearch("http://localhost:9200")
 
+
 PROFILE_INDEX = "user_profiles"
 
 def ensure_profile_index():
@@ -16,7 +17,10 @@ def ensure_profile_index():
             "properties": {
                 "username":  {"type": "keyword"},
                 "searches":  {"type": "object"},
-                "top_terms": {"type": "keyword"}
+                "seed_terms": {"type": "keyword"},
+                "long_term_terms": {"type": "keyword"},
+                "session_terms": {"type": "keyword"},
+                "session_clicks": {"type": "keyword"}
             }
         })
 
@@ -74,14 +78,24 @@ def register_or_load(username):
     ensure_profile_index()
     try:
         doc = client.get(index=PROFILE_INDEX, id=username)
-        return doc["_source"]
+        profile = doc["_source"]
+
+        profile.setdefault("seed_terms", [])
+        profile.setdefault("long_term_terms", [])
+        profile.setdefault("session_terms", [])
+        profile.setdefault("session_clicks", [])
+        profile.setdefault("searches", [])
+
+        return profile
     except Exception:
         initial_terms = seed_profile_logic(username)
         profile = {
             "username": username,
             "searches": [],
-            "seed_terms": initial_terms,  
-            "click_terms": []            
+            "seed_terms": initial_terms,
+            "long_term_terms": [],
+            "session_terms": [],
+            "session_clicks": []
         }
         client.index(index=PROFILE_INDEX, id=username, document=profile)
         return profile
@@ -93,16 +107,29 @@ def log_click(profile, query, clicked_title, clicked_id, clicked_body):
         "timestamp": datetime.now().isoformat()
     })
     profile["searches"] = profile["searches"][-20:]
+
+    profile.setdefault("session_clicks", [])
+    profile["session_clicks"].append(clicked_id)
+    profile["session_clicks"] = profile["session_clicks"][-5:]
     
-    all_text = ""
+    long_text = ""
     for search in profile["searches"]:
         try:
             doc = client.get(index="wikipedia", id=search["clicked_id"])
-            all_text += " " + doc["_source"]["body"]
+            long_text += " " + doc["_source"]["body"]
         except: pass
+
+    session_text = ""
+    for doc_id in profile["session_clicks"]:
+        try:
+            doc = client.get(index="wikipedia", id=doc_id)
+            session_text += " " + doc["_source"]["body"]
+        except:
+            pass
     
-    # Update ONLY the click_terms bucket
-    profile["click_terms"] = clean_and_extract(all_text)
+    # Update long-term and session-based interest terms
+    profile["long_term_terms"] = clean_and_extract(long_text)
+    profile["session_terms"] = clean_and_extract(session_text)
     client.index(index=PROFILE_INDEX, id=profile["username"], document=profile)
 
 
@@ -111,11 +138,14 @@ def log_click(profile, query, clicked_title, clicked_id, clicked_body):
 
 def get_profile_boost(profile):
     """
-    Returns a weighted boost string. 
-    Terms from the bio are repeated more often if BIO_WEIGHT is higher.
+    Builds a weighted boost string from:
+    - seed_terms: initial interests
+    - long_term_terms: stable interests over time
+    - session_terms: current short-term interests
     """
     BIO_WEIGHT = 3    # How many times to repeat bio words
-    CLICK_WEIGHT = 1  # How many times to repeat click words
+    LONG_TERM_WEIGHT = 3
+    SESSION_WEIGHT = 5
     
     boost_parts = []
     
@@ -124,8 +154,13 @@ def get_profile_boost(profile):
         boost_parts.extend([term] * BIO_WEIGHT)
         
     # Add Click terms
-    for term in profile.get("click_terms", []):
-        boost_parts.extend([term] * CLICK_WEIGHT)
+    # Long-term terms: what the user often clicks on over time
+    for term in profile.get("long_term_terms", []):
+        boost_parts.extend([term] * LONG_TERM_WEIGHT)
+
+    # Session terms: what the user seems interested in right now
+    for term in profile.get("session_terms", []):
+        boost_parts.extend([term] * SESSION_WEIGHT)
         
     if not boost_parts:
         return None
