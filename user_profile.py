@@ -18,6 +18,7 @@ def ensure_profile_index():
                 "username":  {"type": "keyword"},
                 "searches":  {"type": "object"},
                 "seed_terms": {"type": "keyword"},
+                "query_terms": {"type": "keyword"},
                 "long_term_terms": {"type": "keyword"},
                 "session_terms": {"type": "keyword"},
                 "session_clicks": {"type": "keyword"}
@@ -81,6 +82,7 @@ def register_or_load(username):
         profile = doc["_source"]
 
         profile.setdefault("seed_terms", [])
+        profile.setdefault("query_terms", [])
         profile.setdefault("long_term_terms", [])
         profile.setdefault("session_terms", [])
         profile.setdefault("session_clicks", [])
@@ -93,6 +95,7 @@ def register_or_load(username):
             "username": username,
             "searches": [],
             "seed_terms": initial_terms,
+            "query_terms": [],
             "long_term_terms": [],
             "session_terms": [],
             "session_clicks": []
@@ -101,12 +104,18 @@ def register_or_load(username):
         return profile
 
 def log_click(profile, query, clicked_title, clicked_id, clicked_body):
-    profile["searches"].append({
+    profile["searches"].append({ 
         "query": query,
         "clicked_id": clicked_id,
         "timestamp": datetime.now().isoformat()
     })
-    profile["searches"] = profile["searches"][-20:]
+    profile["searches"] = profile["searches"][-20:]  
+
+    # 2. Extract terms from the current query and save them
+    query_terms = clean_and_extract(query)
+    profile.setdefault("query_terms", [])
+    profile["query_terms"].extend(query_terms)
+    profile["query_terms"] = profile["query_terms"][-20:]
 
     profile.setdefault("session_clicks", [])
     profile["session_clicks"].append(clicked_id)
@@ -144,6 +153,7 @@ def get_profile_boost(profile):
     - session_terms: current short-term interests
     """
     BIO_WEIGHT = 3    # How many times to repeat bio words
+    QUERY_WEIGHT = 2
     LONG_TERM_WEIGHT = 3
     SESSION_WEIGHT = 5
     
@@ -152,6 +162,10 @@ def get_profile_boost(profile):
     # Add Bio terms
     for term in profile.get("seed_terms", []):
         boost_parts.extend([term] * BIO_WEIGHT)
+    
+    # Query terms
+    for term in profile.get("query_terms", []):
+        boost_parts.extend([term] * QUERY_WEIGHT)
         
     # Add Click terms
     # Long-term terms: what the user often clicks on over time

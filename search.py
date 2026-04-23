@@ -81,10 +81,12 @@ def run(profile):
     print(f"\nLogged in as: {profile['username']}")
     
     seed = profile.get("seed_terms", [])
+    query_terms = profile.get("query_terms", [])
     long_term = profile.get("long_term_terms", [])
     session = profile.get("session_terms", [])
 
     print(f"Seed Interests:      {seed if seed else 'none'}")
+    print(f"Query Terms:         {query_terms if query_terms else 'none'}")
     print(f"Long-term Interests: {long_term if long_term else 'none'}")
     print(f"Session Interests:   {session if session else 'none'}\n")
 
@@ -122,6 +124,7 @@ def run(profile):
                 print(f"Logged click: {clicked['_source']['title']}\n")
                 print("Updated profile:")
                 print(f"Seed Interests:      {profile.get('seed_terms', []) or 'none'}")
+                print(f"Query Terms:         {profile.get('query_terms', []) or 'none'}")
                 print(f"Long-term Interests: {profile.get('long_term_terms', []) or 'none'}")
                 print(f"Session Interests:   {profile.get('session_terms', []) or 'none'}\n")
 
