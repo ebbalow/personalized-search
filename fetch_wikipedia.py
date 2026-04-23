@@ -75,7 +75,7 @@ def index_articles(articles):
     client.indices.create(index="wikipedia", mappings={
         "properties": {
             "title":    {"type": "text"},
-            "body":     {"type": "text"},
+            "body":     {"type": "text", "analyzer": "swedish"},
             "url":      {"type": "keyword"},
             "links":    {"type": "keyword"},
             "pagerank": {"type": "float"}
