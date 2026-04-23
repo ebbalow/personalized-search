@@ -1,84 +1,109 @@
-import networkx as nx
+import requests
 from elasticsearch import Elasticsearch
-import math
 
 client = Elasticsearch("http://localhost:9200")
 
-def compute_and_store_pagerank():
-
-    results = client.search(index="wikipedia", query={"match_all": {}}, size=10000)
-    docs = results["hits"]["hits"]
-    print(f"Loaded {len(docs)} articles from ES")
-
-    title_to_id = {doc["_source"]["title"]: doc["_id"] for doc in docs}
-
-    G = nx.DiGraph()
-
-    for doc in docs:
-        G.add_node(doc["_source"]["title"])
+session = requests.Session()
+session.headers.update({
+    "User-Agent": "SearchEngineProject/1.0 (hugoan@kth.se)"
+})
 
 
-    for doc in docs:
-        src = doc["_source"]["title"]
-        for link in doc["_source"].get("links", []):
-            if link in title_to_id:  # only edges to articles we have
-                G.add_edge(src, link)
-
-    print(f"Graph: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
-
-    pagerank = nx.pagerank(G, alpha=0.85)
-
-    # --- NEW LOG-SCALING LOGIC ---
-    # 1. PageRank scores are tiny decimals. We multiply by 1,000,000 so they
-    #    become whole numbers, and add 1 so we never try to calculate log(0).
-    log_scaled = {
-        title: math.log10((score * 1000000) + 1)
-        for title, score in pagerank.items()
-    }
-
-    # 2. (Optional but recommended) We do a Min-Max on the LOG scores.
-    #    This safely bounds the PageRank influence between 0.0 and 1.0,
-    #    making it much easier to balance with BM25 in your search.py script.
-    max_log = max(log_scaled.values()) if log_scaled else 1.0
-    min_log = min(log_scaled.values()) if log_scaled else 0.0
-
-    normalized = {
-        title: (score - min_log) / (max_log - min_log) if max_log > min_log else 0.0
-        for title, score in log_scaled.items()
-    }
-    # -----------------------------
-
-    for doc in docs:
-        title = doc["_source"]["title"]
-        score = normalized.get(title, 0.0)
-
-        # Updating the document in Elasticsearch.
-        # (Note: if this throws an error depending on your ES python client version,
-        # change `doc=...` to `body={"doc": ...}`)
-        client.update(index="wikipedia", id=doc["_id"], doc={"pagerank": score})
+def get_top_swedish_titles(n=3000):
+    titles = set()
 
 
+    months = ["01", "02", "03", "04", "05", "06", "07","08","09","10","11","12"]
+
+    for month in months:
+        url = f"https://wikimedia.org/api/rest_v1/metrics/pageviews/top/sv.wikipedia/all-access/2024/{month}/all-days"
+
+        try:
+            response = session.get(url).json()
+            articles = response["items"][0]["articles"]
+
+            for a in articles:
+                title = a["article"].replace("_", " ")
+                if ":" not in title and title != "Huvudsida":
+                    titles.add(title)
+
+                # Stop as soon as we hit our target goal
+                if len(titles) >= n:
+                    print(f"Got {len(titles)} titles")
+                    return list(titles)
+
+        except Exception as e:
+            print(f"Error fetching month {month}: {e}")
+
+    # If we run out of months before hitting the target, just return what we have
+    print(f"Got {len(titles)} unique titles from the API")
+    return list(titles)
+
+def fetch_article_content(titles):
+    wiki_url = "https://sv.wikipedia.org/w/api.php"
+    articles = []
+
+    for i, title in enumerate(titles):
+        try:
+            params = {
+                "action": "query",
+                "format": "json",
+                "titles": title,
+                "prop": "extracts|info|links",
+                "explaintext": True,
+                "inprop": "url",
+                "pllimit": 100
+            }
+
+            response = session.get(wiki_url, params=params).json()
+            pages = response["query"]["pages"]
+
+            for page_id, page in pages.items():
+                if page_id == "-1":
+                    continue
+                if "extract" not in page or not page["extract"].strip():
+                    continue
+
+                links = [l["title"] for l in page.get("links", [])]
+
+                articles.append({
+                    "id": page_id,
+                    "title": page["title"],
+                    "body": page["extract"],
+                    "url": page.get("fullurl", ""),
+                    "links": links,
+                    "pagerank": 0.0
+                })
+
+        except Exception as e:
+            print(f"  Error fetching '{title}': {e}")
+
+        if (i + 1) % 50 == 0:
+            print(f"  Fetched {i+1}/{len(titles)} — indexed so far: {len(articles)}")
+
+    return articles
+
+def index_articles(articles):
+    if client.indices.exists(index="wikipedia"):
+        client.indices.delete(index="wikipedia")
+
+    client.indices.create(index="wikipedia", mappings={
+        "properties": {
+            "title":    {"type": "text"},
+            "body":     {"type": "text", "analyzer": "swedish"},
+            "url":      {"type": "keyword"},
+            "links":    {"type": "keyword"},
+            "pagerank": {"type": "float"}
+        }
+    })
+
+    for article in articles:
+        client.index(index="wikipedia", id=article["id"], document=article)
 
     client.indices.refresh(index="wikipedia")
-    print("PageRank scores stored!")
-
-
-    top = sorted(normalized.items(), key=lambda x: x[1], reverse=True)[:10]
-    print("\nTop 10 articles by PageRank:")
-    for i, (title, score) in enumerate(top):
-        print(f"{i+1}. {score:.4f} — {title}")
+    print(f"\nDone! Indexed {len(articles)} articles.")
 
 if __name__ == "__main__":
-    compute_and_store_pagerank()
-
-"""max_score = max(pagerank.values())
-    min_score = min(pagerank.values())
-    normalized = {
-        title: (score - min_score) / (max_score - min_score)
-        for title, score in pagerank.items()
-    }
-
-    for doc in docs:
-        title = doc["_source"]["title"]
-        score = normalized.get(title, 0.0)
-        client.update(index="wikipedia", id=doc["_id"], doc={"pagerank": score})"""
+    titles = get_top_swedish_titles(3000)
+    articles = fetch_article_content(titles)
+    index_articles(articles)
