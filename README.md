@@ -53,7 +53,7 @@ As the user searches and clicks results, the system continuously updates the fol
 
 ### Personalized Ranking
 Search results are ranked using three signals combined:
-1. **BM25** — standard term-based relevance (handled by Elasticsearch and a `curretsearch_boost`)
+1. **BM25** — standard term-based relevance (handled by Elasticsearch and a `currentsearch_boost`)
 2. **PageRank** — importance of the article based on its links
 3. **Profile boost** — terms from the user's profile are added as a `should` clause to boost relevant results
 
