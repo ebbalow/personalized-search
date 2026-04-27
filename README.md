@@ -9,7 +9,7 @@ A personalized search engine which builds and maintains user profiles, and retri
 * Python packages *collections*, *datetime*, *elasticsearch*, *requests*, *beautifulsoup4*, *networkx*
 * Elasticsearch 8.x - [Install and run locally](https://github.com/elastic/start-local)
 
-___
+
 ## Set up the program
 Install the required python packages:
 
@@ -23,11 +23,11 @@ Make sure to configure your Elasticsearch password:
 client = Elasticsearch("http://localhost:9200", basic_auth=("elastic", "YOUR_PASSWORD"))
 ```
 in the following files: `user_profile.py`, `search.py`, `fetch_wikipedia.py`, `compute_pagerank.py` 
-___
+
 ## Run the program
 To run the program, run `main.py`. If it is the first time running the code, the program will automatically run `fetch_wikipedia.py`to fetch and index the 3000 Swedish Wikipedia-articles. `compute_pagerank.py`is also runned, to compute PageRank-score for every article. The program will store the articles and their PageRank-score in an indice "Wikipedia" in your local elasticsearch. Once done, the PIR-system is ready for use. 
 
-___
+
 ## How it works 
 Once having run the program, `main.py` will skip fetching the wikipedia articles and computing PageRank, and instead ask the user to enter their username. 
 
@@ -58,7 +58,7 @@ Search results are ranked using three signals combined:
 
 The weight of each signal can be tuned in `search.py` and `user_profile.py` (bio_weight, currentsearch_boost, search_weight, history_weight, session_weight, pagerank_weight).
 
----
+
 ## Elasticsearch Indices
 
 | Index | Description |
