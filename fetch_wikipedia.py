@@ -8,21 +8,36 @@ session.headers.update({
     "User-Agent": "SearchEngineProject/1.0 (hugoan@kth.se)"
 })
 
-def get_top_swedish_titles(n=1000):
-    url = "https://wikimedia.org/api/rest_v1/metrics/pageviews/top/sv.wikipedia/all-access/2024/01/all-days"
-    response = session.get(url).json()
-    articles = response["items"][0]["articles"]
 
-    titles = []
-    for a in articles:
-        title = a["article"].replace("_", " ")  # fix underscores
-        if ":" not in title and title != "Huvudsida":
-            titles.append(title)
-        if len(titles) >= n:
-            break
+def get_top_swedish_titles(n=3000):
+    titles = set()  # Using a set automatically prevents duplicate articles
 
-    print(f"Got {len(titles)} titles")
-    return titles
+
+    months = ["01", "02", "03", "04", "05", "06", "07","08","09","10","11","12"]
+
+    for month in months:
+        url = f"https://wikimedia.org/api/rest_v1/metrics/pageviews/top/sv.wikipedia/all-access/2024/{month}/all-days"
+
+        try:
+            response = session.get(url).json()
+            articles = response["items"][0]["articles"]
+
+            for a in articles:
+                title = a["article"].replace("_", " ")  # fix underscores
+                if ":" not in title and title != "Huvudsida":
+                    titles.add(title)
+
+                # Stop as soon as we hit our target goal
+                if len(titles) >= n:
+                    print(f"Got {len(titles)} titles")
+                    return list(titles)
+
+        except Exception as e:
+            print(f"Error fetching month {month}: {e}")
+
+    # If we run out of months before hitting the target, just return what we have
+    print(f"Got {len(titles)} unique titles from the API")
+    return list(titles)
 
 def fetch_article_content(titles):
     wiki_url = "https://sv.wikipedia.org/w/api.php"
@@ -89,6 +104,6 @@ def index_articles(articles):
     print(f"\nDone! Indexed {len(articles)} articles.")
 
 if __name__ == "__main__":
-    titles = get_top_swedish_titles(1000)
+    titles = get_top_swedish_titles(3000)
     articles = fetch_article_content(titles)
     index_articles(articles)
